@@ -1,0 +1,8 @@
+opencv-python>=4.8.0
+numpy>=1.21.0
+
+# Optional only when running:
+#   python part3_keyframe_refinement.py --backend diffusers ...
+# diffusers>=0.30.0
+# accelerate>=0.33.0
+# safetensors>=0.4.4

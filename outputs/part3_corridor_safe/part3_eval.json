@@ -1,0 +1,20 @@
+{
+  "frames": 192,
+  "fps": 24.0,
+  "size": [
+    1280,
+    720
+  ],
+  "mask_mean_pixels": 58460.604166666664,
+  "part2_boundary_seam": 3.1025001584008955,
+  "part3_boundary_seam": 3.1025001584008955,
+  "boundary_seam_delta": 0.0,
+  "boundary_seam_improvement_pct": 0.0,
+  "part2_temporal_warp_error": 1.467407334069307,
+  "part3_temporal_warp_error": 1.467407334069307,
+  "temporal_warp_delta": 0.0,
+  "temporal_warp_improvement_pct": 0.0,
+  "part2_masked_texture": 1.842219587105016,
+  "part3_masked_texture": 1.842219587105016,
+  "masked_part2_to_part3_delta": 0.0
+}

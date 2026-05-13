@@ -1,0 +1,36 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Upstream research repositories and model weights are documented in README
+# and should be installed/downloaded locally instead of committed wholesale.
+external/
+
+# Generated presentation/debug artifacts.
+demo_assets/
+
+# Keep final submission outputs and compact metrics, ignore bulky experiments.
+outputs/*
+!outputs/videos_for_submission/
+!outputs/videos_for_submission/**
+!outputs/videos_for_submission_part3/
+!outputs/videos_for_submission_part3/**
+!outputs/part3_metrics_summary.json
+
+!outputs/part3_bmx_trees_gate/
+outputs/part3_bmx_trees_gate/*
+!outputs/part3_bmx_trees_gate/part3_eval.json
+!outputs/part3_bmx_trees_gate/part3_metrics.json
+
+!outputs/part3_tennis_gate2/
+outputs/part3_tennis_gate2/*
+!outputs/part3_tennis_gate2/part3_eval.json
+!outputs/part3_tennis_gate2/part3_metrics.json
+
+!outputs/part3_corridor_safe/
+outputs/part3_corridor_safe/*
+!outputs/part3_corridor_safe/part3_eval.json
+!outputs/part3_corridor_safe/part3_metrics.json
+
+# Empty local staging/data folders.
+data/
