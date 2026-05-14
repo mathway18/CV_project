@@ -231,6 +231,10 @@ Figure~\ref{fig:gallery} expands the qualitative section with large, dataset-lev
 \label{fig:gallery}
 \end{figure*}
 
+The four panels in Figure~\ref{fig:gallery} support the quantitative story with concrete qualitative evidence. In \textit{bmx-trees} (Fig.~\ref{fig:gallery}a), the challenging tree texture makes Part 1 visibly blurrier and leaves Part 2/Part 3 to handle the harder seam-matching problem; the final Part 3 result is most convincing where branch boundaries cross the repaired region because the transition is less abrupt. In \textit{tennis} (Fig.~\ref{fig:gallery}b), the background geometry is simpler and the refinement is correspondingly safer: court lines and fence/background transitions remain stable while minor local artifacts are reduced. In \textit{wild corridor} (Fig.~\ref{fig:gallery}c), the most important observation is not dramatic visual change but \emph{non-change}: the Part 2 baseline is already strong, so the gate correctly avoids unnecessary edits that could introduce new artifacts.
+
+The temporal panel in Fig.~\ref{fig:gallery}d is especially useful because it visualizes a failure mode that is harder to capture with a single frame. On \textit{bmx-trees}, temporal inconsistency appears as small flicker or boundary jitter across adjacent frames. The refined result reduces this instability while preserving the main background structure, which is consistent with the measured drop in temporal warp error reported in Table~\ref{tab:main}. Together, the gallery suggests that the main benefit of Part 3 is not large per-frame visual changes, but selective suppression of localized artifacts in the frames where Part 2 is least stable.
+
 \subsection{Main Quantitative Results}
 \begin{table}[t]
 \centering
@@ -313,23 +317,14 @@ The results also expose meaningful trade-offs:
     \item \textbf{Conservative acceptance.} The quality gate is intentionally asymmetric: it is easier to reject a dubious edit than to accept it. This protects the baseline, but it can also leave some potentially helpful refinements unused.
 \end{itemize}
 
-\section{Limitations and Discussion}
-\subsection{Why Conditional Refinement Matters}
-Overall, the experiments support a practical lesson for video restoration: \emph{refinement should be conditional}. A global always-on post-processing step is brittle, while quality gating enables dataset-specific adaptation. In difficult scenes, a small set of accepted edits is enough to improve stability; in already-clean scenes, conservative rejection prevents regressions. This asymmetry is desirable in production-style restoration, where a visible failure is often more costly than a missed marginal improvement.
-
-\subsection{Scene-Level Limitations}
-Our system is still limited by the amount of recoverable background evidence in the input video. If an object occludes the same region for too long, or if the camera never reveals the hidden background from any nearby frame, then both the OpenCV backend and the ProPainter baseline are forced to extrapolate from weak context. In those cases the output tends to become over-smooth, repetitive, or structurally ambiguous. The gate can reject harmful edits, but it cannot invent missing world knowledge by itself.
-
-Another limitation is upstream mask quality. Detector misses, SAM leakage, or overly conservative masks directly affect the region that is repaired. Part 3 can prevent some regressions after the fact, but it cannot fully recover when the object mask is badly misaligned or semantically incomplete. This is especially important for thin structures, motion blur, and fast camera motion, where the object boundary itself is uncertain.
-
-\subsection{Generative Fallback Potential}
-The repository includes an optional diffusion-based inpainting backend as a fallback for exactly the extreme regime above: when the missing background is never observed and classical borrowing is insufficient. Its main advantage is stronger semantic imagination. In principle, it can restore walls, floor patterns, or vegetation that never appear in neighboring frames.
-
-Its disadvantages are equally important. It is much more expensive in compute and memory, depends on large external weights, and produces less deterministic outputs than the OpenCV path used in our final report. For this reason, we treat diffusion as a promising extension rather than the default solution for the mandatory benchmark.
-
 \section{Conclusion}
-We presented a complete video object removal project that progresses from classical computer-vision baselines to modern foundation-model-based restoration and an adaptive Part 3 extension. With mandatory datasets, the final system demonstrates two complementary strengths: (1) measurable improvement where refinement is beneficial (\textit{bmx-trees}, \textit{tennis}), and (2) safe non-intervention where the baseline is already near-optimal (wild corridor).
-Future work includes larger evaluation on benchmarks with ground truth, stronger video foundation models for dynamic mask quality, and learning-based acceptance policies that replace manual thresholds with data-driven reliability prediction.
+We presented a complete video object removal project that progresses from classical computer-vision baselines to modern foundation-model-based restoration and an adaptive Part 3 extension. Across the mandatory datasets, the final system demonstrates two complementary strengths: (1) measurable improvement where refinement is beneficial (\textit{bmx-trees}, \textit{tennis}), and (2) safe non-intervention where the baseline is already near-optimal (\textit{wild corridor}). The central lesson is that post-restoration refinement should be treated as a selective control problem rather than an always-on image enhancement step.
+
+\paragraph{Limitations.}
+Our analysis remains no-reference, so the reported seam and warp improvements are informative but still indirect. The system is also fundamentally limited by available background evidence: if an object occludes the same region for too long, or if the camera never reveals the hidden area from nearby frames, then both OpenCV repair and ProPainter must extrapolate from weak context. In those cases, the output may become over-smooth, repetitive, or structurally ambiguous. A second limitation is upstream mask quality. Detector misses, SAM leakage, and inaccurate boundaries directly affect the repaired region, and the quality gate can only reject harmful edits after they are generated rather than fixing mask errors at the source.
+
+\paragraph{Future Work.}
+Future work includes larger evaluation on benchmarks with ground truth, stronger video foundation models for dynamic mask quality, and learning-based acceptance policies that replace manual thresholds with data-driven reliability prediction. The optional diffusion backend is another promising extension for cases with extremely limited background evidence, because it can hallucinate semantically plausible content that never appears elsewhere in the clip. However, this comes with substantially higher compute and memory cost, larger model dependencies, and less deterministic outputs, so it is better viewed as a fallback for hard cases than as the default path.
 
 \begin{thebibliography}{17}\small
 
