@@ -107,7 +107,13 @@ Part 3 introduces a conservative refinement strategy:
     \item Softly blend repaired content into Part 2 outputs.
     \item Accept the candidate only if local no-reference checks improve seam/temporal behavior and satisfy regression thresholds; otherwise fall back to Part 2.
 \end{enumerate}
-Unlike unconditional post-processing, this stage is explicitly formulated as a \emph{decision problem}. For each candidate frame $I_t^{(3)}$ and baseline frame $I_t^{(2)}$, we evaluate local boundary seam, temporal warp consistency, and masked-region change magnitude. A frame is accepted only when (i) seam does not regress, (ii) temporal error does not exceed a configured regression bound, and (iii) masked-region drift remains under a safety threshold. Otherwise, we directly copy $I_t^{(2)}$ to the final output. This design makes Part 3 robust in two opposite regimes: it can improve difficult sequences (large texture/occlusion) while preserving strong Part 2 outputs in easy or already-clean sequences.
+Unlike unconditional post-processing, this stage is explicitly formulated as a \emph{decision problem}. For each candidate frame $I_t^{\text{P3}}$ and baseline frame $I_t^{\text{P2}}$ (P2/P3 denote Part 2/Part 3 outputs), we evaluate local boundary seam, temporal warp consistency, and masked-region change magnitude. A frame is accepted only when all criteria below are satisfied:
+\begin{itemize}
+    \item seam does not regress;
+    \item temporal error does not exceed a configured regression bound;
+    \item masked-region drift remains under a safety threshold.
+\end{itemize}
+If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
 \section{Experiments}
 \subsection{Experimental Setup}
@@ -121,20 +127,20 @@ Because clean ground-truth videos are unavailable for these mandatory sequences,
     \item \textbf{Masked texture statistic} (diagnostic): local high-frequency content in masked regions.
     \item \textbf{Gate acceptance behavior}: accepted/rejected frames and acceptance rate.
 \end{itemize}
-These metrics are computed from saved outputs in \texttt{outputs/part3\_*\allowbreak/part3\_eval.json} and summarized in \texttt{outputs/part3\_metrics\_summary.json}.
+These metrics are computed from saved outputs in \texttt{outputs/part3\_*/part3\_eval.json} and summarized in \texttt{outputs/part3\_metrics\_summary.json}.
 
 \subsection{Main Quantitative Results}
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Part 2 vs. Part 3 quantitative comparison. Seam and warp are lower-is-better.}
+\caption{Part 2 vs. Part 3 quantitative comparison. Seam and warp are lower-is-better; improvement columns report relative reduction (\%).}
 \label{tab:main}
 \begin{tabular}{lrrrrrr}
 \toprule
-Dataset & P2 Seam & P3 Seam & $\Delta$Seam\% & P2 Warp & P3 Warp & $\Delta$Warp\% \\
+Dataset & P2 Seam & P3 Seam & Seam Reduction\% & P2 Warp & P3 Warp & Warp Reduction\% \\
 \midrule
-bmx-trees & 18.2920 & \textbf{18.1038} & +1.03 & 5.3090 & \textbf{5.1043} & +3.86 \\
-tennis & 3.7167 & \textbf{3.5840} & +3.57 & 2.1920 & \textbf{2.1745} & +0.80 \\
+bmx-trees & 18.2920 & \textbf{18.1038} & 1.03 & 5.3090 & \textbf{5.1043} & 3.86 \\
+tennis & 3.7167 & \textbf{3.5840} & 3.57 & 2.1920 & \textbf{2.1745} & 0.80 \\
 wild corridor & 3.1025 & 3.1025 & 0.00 & 1.4674 & 1.4674 & 0.00 \\
 \bottomrule
 \end{tabular}
@@ -143,11 +149,11 @@ wild corridor & 3.1025 & 3.1025 & 0.00 & 1.4674 & 1.4674 & 0.00 \\
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Gate behavior and masked-region diagnostics.}
+\caption{Gate behavior and masked-region diagnostics. Avg Mask px/frame is resolution-dependent and should be interpreted within each dataset. Negative Texture $\Delta$\% values indicate reduced masked-region texture (smoother appearance).}
 \label{tab:gate}
 \begin{tabular}{lrrrrrr}
 \toprule
-Dataset & Frames & Acc. & Rej. & Acc.\% & Mask px & Texture $\Delta$\% \\
+Dataset & Frames & Accepted & Rejected & Acc.\% & Avg Mask px/frame & Texture $\Delta$\% \\
 \midrule
 bmx-trees & 80 & 15 & 65 & 18.75 & 3142.7 & -7.21 \\
 tennis & 70 & 53 & 17 & 75.71 & 12688.8 & -20.98 \\
@@ -159,11 +165,11 @@ wild corridor & 192 & 0 & 192 & 0.00 & 58460.6 & 0.00 \\
 Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consistency on \textit{bmx-trees} and \textit{tennis}, while preserving wild corridor unchanged. Table~\ref{tab:gate} reveals that this behavior is tightly linked to gate decisions: the gate is highly selective on \textit{bmx-trees} (18.75\% acceptance), permissive on \textit{tennis} (75.71\%), and fully rejecting on corridor (0\%). This confirms that the refinement stage functions as an adaptive controller rather than a fixed transformation.
 
 \subsection{Per-Dataset Analysis}
-\textbf{\textit{bmx-trees}.} This sequence has challenging high-frequency background content (trees/branches), where seam artifacts are easy to introduce. The gate accepts only 15/80 frames, but this small subset is sufficient to yield measurable gains: seam improves by 1.03\% and temporal warp by 3.86\%. The relatively low acceptance rate indicates that many candidate edits are risky in this scene; selective acceptance prevents quality collapse.
+\textit{bmx-trees}. This sequence has challenging high-frequency background content (trees/branches), where seam artifacts are easy to introduce. The gate accepts only 15/80 frames, but this small subset is sufficient to yield measurable gains: seam improves by 1.03\% and temporal warp by 3.86\%. The relatively low acceptance rate indicates that many candidate edits are risky in this scene; selective acceptance prevents quality collapse.
 
-\textbf{\textit{tennis}.} This sequence admits many stable corrections (53/70 accepted). Seam improves by 3.57\% and temporal warp by 0.80\%, showing that accepted edits are mostly safe and useful. The larger texture drop suggests stronger smoothing in masked regions; however, the boundary and temporal metrics still improve, indicating a favorable trade-off for this dataset.
+\textit{tennis}. This sequence admits many stable corrections (53/70 accepted). Seam improves by 3.57\% and temporal warp by 0.80\%, showing that accepted edits are mostly safe and useful. The larger texture drop suggests stronger smoothing in masked regions; however, the boundary and temporal metrics still improve, indicating a favorable trade-off for this dataset.
 
-\textbf{Wild corridor.} All 192 candidate frames are rejected, and Part 3 exactly matches Part 2. This is not a failure; it is intended behavior of quality-gated refinement when the baseline is already strong and additional edits are likely to be harmful. The gate therefore acts as a safety mechanism that protects an already good restoration.
+\textit{wild corridor}. All 192 candidate frames are rejected, and Part 3 exactly matches Part 2. This is not a failure; it is intended behavior of quality-gated refinement when the baseline is already strong and additional edits are likely to be harmful. The gate therefore acts as a safety mechanism that protects an already good restoration.
 
 \subsection{Qualitative Comparison}
 \begin{figure*}[t]
@@ -171,7 +177,7 @@ Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consisten
 \includegraphics[width=0.32\textwidth]{report_assets/bmx_trees_compare.png}\hfill
 \includegraphics[width=0.32\textwidth]{report_assets/tennis_compare.png}\hfill
 \includegraphics[width=0.32\textwidth]{report_assets/wild_corridor_compare.png}
-\caption{Real frame-level qualitative comparisons extracted from final outputs. Each panel contains Part 2 frame, Part 3 frame, and corresponding zoomed views (same timestamp). \textit{bmx-trees} and \textit{tennis} show cleaner transitions around removal regions; wild corridor remains visually equivalent due to full gate rejection.}
+\caption{Real frame-level qualitative comparisons extracted from final outputs. The figure shows three dataset panels arranged horizontally. Within each panel image, top-left is Part 2, top-right is Part 3, bottom-left is Part 2 zoom, and bottom-right is Part 3 zoom (same timestamp). \textit{bmx-trees} and \textit{tennis} show cleaner transitions around removal regions; wild corridor remains visually equivalent due to full gate rejection.}
 \label{fig:qual-main}
 \end{figure*}
 
@@ -183,7 +189,12 @@ Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consisten
 \end{figure}
 
 \subsection{Failure Modes and Trade-offs}
-The results also expose meaningful trade-offs. First, no-reference metrics may not fully capture perceptual realism, especially in large uniform regions where seam reduction can coincide with over-smoothing. Second, datasets have different spatial resolutions (e.g., corridor at $1280\times720$ vs. others at $432\times240$), so absolute metric magnitudes are not directly interchangeable across datasets; trends within each dataset are more reliable than cross-dataset raw-value ranking. Third, masked texture can decrease even when seam/warp improve, so final judgment should combine quantitative diagnostics with visual inspection (Figure~\ref{fig:qual-main}).
+The results also expose meaningful trade-offs:
+\begin{itemize}
+    \item \textbf{No-reference limitation.} Seam and warp are useful diagnostics, but they may not fully capture perceptual realism. This is most apparent in large uniform regions where seam reduction can coincide with over-smoothing.
+    \item \textbf{Resolution mismatch.} Datasets have different spatial resolutions (corridor at $1280\times720$ vs. others at $432\times240$). Absolute metric magnitudes are therefore not directly interchangeable across datasets; within-dataset trends are more reliable.
+    \item \textbf{Texture vs. smoothness tension.} Masked texture can decrease even when seam/warp improve, so final judgment should combine quantitative diagnostics with visual inspection (Figure~\ref{fig:qual-main}).
+\end{itemize}
 
 \subsection{Discussion}
 Overall, the experiments support a practical lesson for video restoration: \emph{refinement should be conditional}. A global always-on refinement step is brittle, while quality gating enables dataset-specific adaptation. In difficult scenes, selective accepted edits improve quality; in already-clean scenes, conservative rejection prevents regressions. This is particularly important in production workflows where failure cases are more costly than modest missed gains.
