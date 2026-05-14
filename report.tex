@@ -121,7 +121,7 @@ Unlike unconditional post-processing, this stage is explicitly formulated as a \
 D_t \le \tau_d
 \right],
 \end{equation}
-where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds. This means seam must not regress, temporal error can increase only within a bounded tolerance, and masked-region drift must remain controlled.
+where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds.
 If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
 \subsection{Implementation Details}
@@ -136,7 +136,7 @@ All reported course results are \emph{inference-only}; no detector, segmenter, o
 \toprule
 Category & Details \\
 \midrule
-Hardware/runtime & Successful experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild-corridor ProPainter evaluation run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The $1280\times720$ video used in figures and demos is an upscaled display copy of that successful restoration, not a separate high-resolution inference pass. \\
+Hardware/runtime & All reported experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild-corridor ProPainter evaluation run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The $1280\times720$ video used in figures and demos is an upscaled display copy of that restoration, not a separate high-resolution inference pass. \\
 Software stack & Python 3.10+ environment with OpenCV $\geq$ 4.8.0, NumPy $\geq$ 1.21.0, PyTorch $\geq$ 2.5.1, Torchvision $\geq$ 0.20.1, scikit-image $\geq$ 0.24.0, and Ultralytics $\geq$ 8.0.0. On CUDA machines, SAM 2 inference runs under \texttt{torch.autocast} with bfloat16. \\
 Part 1 baseline & YOLOv8-Seg checkpoint \texttt{yolov8s-seg.pt}, confidence threshold 0.5, target classes $\{0,1,15\}$ (person, bicycle, cat), Lucas--Kanade motion threshold 1.0, and morphological dilation to enlarge masks before restoration. \\
 Part 2 masks & SAM 2.1 Hiera Tiny was used for the reproducible corridor run because it fit the local memory budget. The final predictor uses explicit detector boxes with \texttt{multimask\_output=False}; therefore \texttt{points\_per\_side} is not used in our pipeline (box prompting replaces grid-point sampling). Temporal mask stabilization is disabled by default because it amplified false positives on the corridor sequence. \\
@@ -274,7 +274,7 @@ Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consisten
 \textit{wild corridor}. All 192 candidate frames are rejected, and Part 3 exactly matches Part 2. This is not a failure; it is intended behavior of quality-gated refinement when the baseline is already strong and additional edits are likely to be harmful. The gate therefore acts as a safety mechanism that protects an already good restoration.
 
 \subsection{Ablation Study: Gate vs. Always-Accept Candidate}
-To isolate the decision layer itself, Table~\ref{tab:ablation} compares the final quality-gated output against a counterfactual ``always-accept candidate'' policy computed from the saved per-frame Part 3 logs. This ablation uses the \emph{same} candidate repairs and differs only in whether the acceptance rule in Eq.~\ref{eq:gate} is applied.
+To isolate the decision layer itself, Table~\ref{tab:ablation} compares the final quality-gated output against a counterfactual ``always-accept candidate'' policy computed from the saved per-frame Part 3 logs. This ablation uses the \emph{same} candidate repairs and differs only in whether the acceptance rule in Eq.~\ref{eq:gate} is applied. We omit \textit{wild corridor} because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2.
 
 \begin{table}[t]
 \centering
@@ -296,7 +296,7 @@ Dataset & Setting & Seam $\downarrow$ & Temp. $\downarrow$ & Texture $\uparrow$ 
 \end{tabular}
 \end{table}
 
-The ablation clarifies the role of the gate. We omit \textit{wild corridor} from Table~\ref{tab:ablation} because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2.
+The ablation clarifies the role of the gate.
 
 On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions. Mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression.
 
