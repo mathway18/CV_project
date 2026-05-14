@@ -125,7 +125,7 @@ where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W
 If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
 \subsection{Implementation Details}
-All reported course results are \emph{inference-only}; no detector, segmenter, or inpainting network was retrained in this project. Table~\ref{tab:impl} summarizes the concrete implementation choices that were used in the final runs and directly map the report to the released code/configuration files.
+All reported project results are \emph{inference-only}; no detector, segmenter, or inpainting network was retrained in this project. Table~\ref{tab:impl} summarizes the concrete implementation choices that were used in the final runs and directly map the report to the released code/configuration files.
 
 \begin{table*}[t]
 \centering
@@ -136,7 +136,7 @@ All reported course results are \emph{inference-only}; no detector, segmenter, o
 \toprule
 Category & Details \\
 \midrule
-Hardware/runtime & All reported experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild corridor ProPainter evaluation run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The $1280\times720$ video used in figures and demos is an upscaled display copy of that restoration, not a separate high-resolution inference pass. \\
+Hardware/runtime & All reported experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild corridor restoration run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The report therefore uses an exported $1280\times720$ display copy derived from that successful low-resolution restoration rather than a separate high-resolution inference pass. \\
 Software stack & Python 3.10+ environment with OpenCV $\geq$ 4.8.0, NumPy $\geq$ 1.21.0, PyTorch $\geq$ 2.5.1, Torchvision $\geq$ 0.20.1, scikit-image $\geq$ 0.24.0, and Ultralytics $\geq$ 8.0.0. On CUDA machines, SAM 2 inference runs under \texttt{torch.autocast} with bfloat16. \\
 Part 1 baseline & YOLOv8-Seg checkpoint \texttt{yolov8s-seg.pt}, confidence threshold 0.5, target classes $\{0,1,15\}$ (person, bicycle, cat), Lucas--Kanade motion threshold 1.0, and morphological dilation to enlarge masks before restoration. \\
 Part 2 masks & SAM 2.1 Hiera Tiny was used for the reproducible wild corridor run because it fit the local memory budget. The final predictor uses explicit detector boxes with \texttt{multimask\_output=False}; therefore \texttt{points\_per\_side} is not used in our pipeline (box prompting replaces grid-point sampling). Temporal mask stabilization is disabled by default because it amplified false positives on the wild corridor sequence. \\
@@ -177,7 +177,7 @@ Algorithm~\ref{alg:qgr} presents the core control logic of Part 3. The important
 
 \section{Experiments}
 \subsection{Experimental Setup}
-We evaluate all mandatory videos: \textit{bmx-trees} (80 frames, $432\times240$), \textit{tennis} (70 frames, $432\times240$), and wild corridor (192 frames, $1280\times720$). Part 2 is the fixed baseline (SAM 2 + ProPainter). Part 3 is the quality-gated keyframe refinement stage built on top of those outputs.
+We evaluate all mandatory videos: \textit{bmx-trees} (80 frames, $432\times240$), \textit{tennis} (70 frames, $432\times240$), and \textit{wild corridor} (192 frames, native $1280\times720$). For memory reasons, the corridor restoration itself is computed at $656\times368$ and then exported as a $1280\times720$ display copy for reporting. Part 2 is the fixed baseline (SAM 2 + ProPainter). Part 3 is the quality-gated keyframe refinement stage built on top of those outputs.
 
 \subsection{Metrics}
 Because clean ground-truth videos are unavailable for these mandatory sequences, we use no-reference diagnostics:
