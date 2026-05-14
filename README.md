@@ -55,7 +55,8 @@ pip install -r requirements_part3.txt
 ### Included in this repository
 - `yolov8s-seg.pt` (YOLOv8 segmentation checkpoint)
 
-### Required for Part 2 / Part 3
+### Required for Part 2 / Part 3 only
+> Part 1 can run independently without SAM2/ProPainter.
 1. Clone external repositories:
 ```bash
 git clone https://github.com/facebookresearch/sam2 external/sam2
@@ -90,6 +91,8 @@ python background_restoration.py
 
 ### Part 2 (YOLO + SAM2 + ProPainter)
 
+Replace `video/bmx_trees.mp4` and output paths below with your target video/case when needed (for example corridor or tennis).
+
 ```bash
 python video_object_removal_part2.py \
   --input video/bmx_trees.mp4 \
@@ -101,6 +104,8 @@ python video_object_removal_part2.py \
 ```
 
 ### Part 3 (quality-gated refinement)
+
+Run Part 2 first to generate `input_video.mp4`, `part2_output.mp4`, and `mask_video.mp4` in the selected Part 2 output folder.
 
 ```bash
 python part3_keyframe_refinement.py \
