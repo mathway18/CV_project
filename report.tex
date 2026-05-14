@@ -136,7 +136,7 @@ All reported course results are \emph{inference-only}; no detector, segmenter, o
 \toprule
 Category & Details \\
 \midrule
-Hardware/runtime & Successful experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild-corridor ProPainter run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory, so a $1280\times720$ copy was exported only for presentation. \\
+Hardware/runtime & Successful experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild-corridor ProPainter evaluation run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The $1280\times720$ video used in figures and demos is an upscaled display copy of that successful restoration, not a separate high-resolution inference pass. \\
 Software stack & Python 3.10+ environment with OpenCV $\geq$ 4.8.0, NumPy $\geq$ 1.21.0, PyTorch $\geq$ 2.5.1, Torchvision $\geq$ 0.20.1, scikit-image $\geq$ 0.24.0, and Ultralytics $\geq$ 8.0.0. On CUDA machines, SAM 2 inference runs under \texttt{torch.autocast} with bfloat16. \\
 Part 1 baseline & YOLOv8-Seg checkpoint \texttt{yolov8s-seg.pt}, confidence threshold 0.5, target classes $\{0,1,15\}$ (person, bicycle, cat), Lucas--Kanade motion threshold 1.0, and morphological dilation to enlarge masks before restoration. \\
 Part 2 masks & SAM 2.1 Hiera Tiny was used for the reproducible corridor run because it fit the local memory budget. The final predictor uses explicit detector boxes with \texttt{multimask\_output=False}; therefore \texttt{points\_per\_side} is not used in our pipeline (box prompting replaces grid-point sampling). Temporal mask stabilization is disabled by default because it amplified false positives on the corridor sequence. \\
@@ -185,7 +185,7 @@ Because clean ground-truth videos are unavailable for these mandatory sequences,
     \item \textbf{Boundary seam score} (lower is better): discontinuity around mask boundaries.
     \item \textbf{Temporal warp error} (lower is better): frame-to-frame inconsistency after motion warping.
     \item \textbf{Masked texture statistic} (diagnostic): local high-frequency content in masked regions.
-\item \textbf{Gate acceptance behavior}: accepted/rejected frames and acceptance rate.
+    \item \textbf{Gate acceptance behavior}: Accepted/rejected frames and acceptance rate.
 \end{itemize}
 These metrics are computed from saved outputs in \texttt{outputs/part3\_*/part3\_eval.json} and summarized in \texttt{outputs/part3\_metrics\_summary.json}.
 
@@ -199,7 +199,7 @@ Figure~\ref{fig:gallery} expands the qualitative section with large, dataset-lev
     \includegraphics[width=\linewidth]{report_assets/bmx_trees_compare.png}
     \vspace{1mm}
     
-    {\footnotesize (a) \textit{bmx-trees}: textured background and seam-sensitive restoration.}
+    {\footnotesize (a) \textit{bmx-trees}: textured background with challenging seam boundaries.}
 \end{minipage}
 \hfill
 \begin{minipage}[t]{0.49\textwidth}
@@ -279,7 +279,7 @@ To isolate the decision layer itself, Table~\ref{tab:ablation} compares the fina
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Ablation of the quality gate using the same generated candidates. Local seam and local temporal are lower-is-better; masked texture is higher-is-better.}
+\caption{Ablation of the quality gate using the same generated candidates. Boundary seam score and temporal error are lower-is-better; masked texture is higher-is-better.}
 \label{tab:ablation}
 \begin{tabular}{llrrr}
 \toprule
@@ -296,7 +296,13 @@ Dataset & Setting & Seam $\downarrow$ & Temp. $\downarrow$ & Texture $\uparrow$ 
 \end{tabular}
 \end{table}
 
-The ablation clarifies the role of the gate. We omit \textit{wild corridor} from Table~\ref{tab:ablation} because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2. On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions: mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression. On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference; most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames). The practical takeaway is that the gate is primarily a \emph{risk controller}: it may sacrifice a small amount of average seam reduction in exchange for better texture preservation and slightly better local temporal stability.
+The ablation clarifies the role of the gate. We omit \textit{wild corridor} from Table~\ref{tab:ablation} because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2.
+
+On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions. Mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression.
+
+On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference. Most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames).
+
+The practical takeaway is that the gate is primarily a \emph{risk controller}. It may sacrifice a small amount of average seam reduction in exchange for better texture preservation and slightly better local temporal stability.
 
 \subsection{Failure Modes and Trade-offs}
 The results also expose meaningful trade-offs:
@@ -317,7 +323,9 @@ Our system is still limited by the amount of recoverable background evidence in 
 Another limitation is upstream mask quality. Detector misses, SAM leakage, or overly conservative masks directly affect the region that is repaired. Part 3 can prevent some regressions after the fact, but it cannot fully recover when the object mask is badly misaligned or semantically incomplete. This is especially important for thin structures, motion blur, and fast camera motion, where the object boundary itself is uncertain.
 
 \subsection{Generative Fallback Potential}
-The repository includes an optional diffusion-based inpainting backend as a fallback for exactly the extreme regime above: when the missing background is never observed and classical borrowing is insufficient. Its main advantage is stronger semantic imagination, which could plausibly restore walls, floor patterns, or vegetation that are absent from neighboring frames. Its disadvantages are equally important: much higher compute and memory cost, dependency on large external weights, and less deterministic outputs than the OpenCV path used in our final report. For this reason, we treat diffusion as a promising extension rather than the default solution for the mandatory benchmark.
+The repository includes an optional diffusion-based inpainting backend as a fallback for exactly the extreme regime above: when the missing background is never observed and classical borrowing is insufficient. Its main advantage is stronger semantic imagination. In principle, it can restore walls, floor patterns, or vegetation that never appear in neighboring frames.
+
+Its disadvantages are equally important. It is much more expensive in compute and memory, depends on large external weights, and produces less deterministic outputs than the OpenCV path used in our final report. For this reason, we treat diffusion as a promising extension rather than the default solution for the mandatory benchmark.
 
 \section{Conclusion}
 We presented a complete video object removal project that progresses from classical computer-vision baselines to modern foundation-model-based restoration and an adaptive Part 3 extension. With mandatory datasets, the final system demonstrates two complementary strengths: (1) measurable improvement where refinement is beneficial (\textit{bmx-trees}, \textit{tennis}), and (2) safe non-intervention where the baseline is already near-optimal (wild corridor).
