@@ -31,7 +31,7 @@ From Hand-crafted Baselines to Quality-Gated Refinement}
 \maketitle
 
 \begin{abstract}
-We study video object removal and background restoration under a three-stage course setting: (1) a hand-crafted baseline with detection, motion filtering, and classical inpainting; (2) an AI-driven pipeline combining SAM 2 and ProPainter; and (3) a quality-gated extension that performs keyframe repair and frame-level fallback for stability. Our implementation emphasizes practical reproducibility, supports mandatory datasets (wild corridor, \textit{bmx-trees}, \textit{tennis}), and reports no-reference boundary seam and temporal warp metrics for Part 2 vs. Part 3. Experiments show that quality-gated refinement improves seam and temporal consistency on \textit{bmx-trees} and \textit{tennis}, while correctly preserving an already strong Part 2 output on the corridor sequence by rejecting harmful edits. This demonstrates that adaptive acceptance is more reliable than unconditional refinement in real-world video restoration. GitHub repository: \url{https://github.com/mathway18/CV_project}.
+Temporal consistency is the central bottleneck of practical video object removal: frame-wise plausible results often still exhibit flicker, boundary instability, or drift over time. We study a three-stage course pipeline: (1) a hand-crafted baseline with detection, motion filtering, and classical inpainting; (2) an AI-driven pipeline combining SAM 2 and ProPainter; and (3) a quality-gated extension with keyframe repair and frame-level fallback. We evaluate mandatory datasets (wild corridor, \textit{bmx-trees}, \textit{tennis}) using no-reference boundary seam and temporal warp metrics for Part 2 vs. Part 3. Experiments show that quality-gated refinement improves seam and temporal consistency on \textit{bmx-trees} and \textit{tennis}, while preserving an already strong corridor baseline by rejecting harmful edits. This indicates adaptive acceptance is more reliable than unconditional refinement in real-world restoration. GitHub repository: \url{https://github.com/mathway18/CV_project}.
 \end{abstract}
 
 \section{Introduction}
@@ -51,10 +51,13 @@ Our key contributions are:
 R-CNN~\cite{girshick2014rcnn} and Mask R-CNN~\cite{he2017maskrcnn} established two-stage detection/instance segmentation, while YOLO~\cite{redmon2016yolo} provided a strong real-time one-stage alternative. DETR~\cite{carion2020detr} introduced transformer-based end-to-end detection. Segment Anything (SAM)~\cite{kirillov2023sam} generalized promptable segmentation, and SAM 2~\cite{ravi2024sam2} extended this capability to video settings.
 
 \subsection{Video Object Tracking and Dynamic Segmentation}
-Track-Anything~\cite{yang2023trackanything} combines SAM-style segmentation with temporal tracking for interactive video object extraction. Recent geometry-centric methods such as VGGT4D~\cite{hu2025vggt4d}, built on visual geometry transformers~\cite{wang2025vggt}, show another route to dynamic cue mining. Newer foundation-model directions (SAM 3~\cite{carion2025sam3}, MapAnything~\cite{keetha2025mapanything}, Pi3~\cite{wang2025pi3}) suggest that richer 3D/4D priors may further improve video masks.
+Track-Anything~\cite{yang2023trackanything} combines SAM-style segmentation with temporal tracking for interactive video object extraction. Recent geometry-centric methods such as VGGT4D~\cite{hu2025vggt4d}, built on visual geometry transformers~\cite{wang2025vggt}, show another route to dynamic cue mining. We treat newer foundation-model directions (SAM 3~\cite{carion2025sam3}, MapAnything~\cite{keetha2025mapanything}, Pi3~\cite{wang2025pi3}) as latest/concurrent frontiers rather than mature baselines, and reference them to position our work relative to rapidly evolving research trends.
 
 \subsection{Video Inpainting and Generative Restoration}
 Classical flow-guided completion FGVC~\cite{gao2020fgvc} and end-to-end E2FGVI~\cite{li2022e2fgvi} advanced temporal inpainting quality. ProPainter~\cite{zhou2023propainter} combines dual-domain propagation and sparse transformers to handle large occlusions robustly and serves as our Part 2 core inpainting engine. For hard cases where background content never appears in the sequence, latent diffusion~\cite{rombach2022ldm} with controllable conditioning (e.g., ControlNet~\cite{zhang2023controlnet}) provides a promising generative fallback.
+
+\subsection{Related Work Summary and Gap}
+Prior systems substantially improve segmentation and inpainting quality, but they are still commonly deployed as \emph{always-on} refinement pipelines. In our mandatory datasets, this assumption is fragile: some sequences benefit from additional edits, while already-clean sequences can degrade under unnecessary post-processing. This gap motivates our Part 3 design: a quality gate that turns refinement into a selective decision process, retaining ProPainter strengths while reducing regression risk.
 
 \section{Method}
 \subsection{Overall Roadmap}
@@ -108,11 +111,15 @@ Part 3 introduces a conservative refinement strategy:
     \item Accept the candidate only if local no-reference checks improve seam/temporal behavior and satisfy regression thresholds; otherwise fall back to Part 2.
 \end{enumerate}
 Unlike unconditional post-processing, this stage is explicitly formulated as a \emph{decision problem}. For each candidate frame $I_t^{\text{P3}}$ and baseline frame $I_t^{\text{P2}}$ (P2/P3 denote Part 2/Part 3 outputs), we evaluate local boundary seam, temporal warp consistency, and masked-region change magnitude. A frame is accepted only when all criteria below are satisfied:
-\begin{itemize}
-    \item seam does not regress;
-    \item temporal error does not exceed a configured regression bound;
-    \item masked-region drift remains under a safety threshold.
-\end{itemize}
+\begin{equation}
+\mathrm{Accept}_t=\mathbf{1}\!\left[
+\Delta S_t \le 0 \;\wedge\;
+\Delta W_t \le \tau_w \;\wedge\;
+D_t \le \tau_d
+\right],
+\end{equation}
+where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds. This means seam must not regress, temporal error can increase only within a bounded tolerance, and masked-region drift must remain controlled.
+where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds.
 If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
 \section{Experiments}
@@ -171,29 +178,12 @@ Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consisten
 
 \textit{wild corridor}. All 192 candidate frames are rejected, and Part 3 exactly matches Part 2. This is not a failure; it is intended behavior of quality-gated refinement when the baseline is already strong and additional edits are likely to be harmful. The gate therefore acts as a safety mechanism that protects an already good restoration.
 
-\subsection{Qualitative Comparison}
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.32\textwidth]{report_assets/bmx_trees_compare.png}\hfill
-\includegraphics[width=0.32\textwidth]{report_assets/tennis_compare.png}\hfill
-\includegraphics[width=0.32\textwidth]{report_assets/wild_corridor_compare.png}
-\caption{Real frame-level qualitative comparisons extracted from final outputs. The figure shows three dataset panels arranged horizontally. Within each panel image, top-left is Part 2, top-right is Part 3, bottom-left is Part 2 zoom, and bottom-right is Part 3 zoom (same timestamp). \textit{bmx-trees} and \textit{tennis} show cleaner transitions around removal regions; wild corridor remains visually equivalent due to full gate rejection.}
-\label{fig:qual-main}
-\end{figure*}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{report_assets/bmx_temporal.png}
-\caption{Temporal consistency example on \textit{bmx-trees} (two adjacent frames). Part 3 reduces flicker-like boundary variation while preserving frame continuity.}
-\label{fig:qual-temporal}
-\end{figure}
-
 \subsection{Failure Modes and Trade-offs}
 The results also expose meaningful trade-offs:
 \begin{itemize}
     \item \textbf{No-reference limitation.} Seam and warp are useful diagnostics, but they may not fully capture perceptual realism. This is most apparent in large uniform regions where seam reduction can coincide with over-smoothing.
     \item \textbf{Resolution mismatch.} Datasets have different spatial resolutions (corridor at $1280\times720$ vs. others at $432\times240$). Absolute metric magnitudes are therefore not directly interchangeable across datasets; within-dataset trends are more reliable.
-    \item \textbf{Texture vs. smoothness tension.} Masked texture can decrease even when seam/warp improve, so final judgment should combine quantitative diagnostics with visual inspection (Figure~\ref{fig:qual-main}).
+    \item \textbf{Texture vs. smoothness tension.} Masked texture can decrease even when seam/warp improve, so final judgment should combine quantitative diagnostics with direct inspection of rendered outputs.
 \end{itemize}
 
 \subsection{Discussion}
