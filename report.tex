@@ -217,7 +217,7 @@ Figure~\ref{fig:gallery} expands the qualitative section with large, dataset-lev
     \includegraphics[width=\linewidth]{report_assets/wild_corridor_compare.png}
     \vspace{1mm}
     
-    {\footnotesize (c) Wild corridor: strong Part 2 baseline that should be preserved rather than over-edited.}
+    {\footnotesize (c) \textit{wild corridor}: strong Part 2 baseline that should be preserved rather than over-edited.}
 \end{minipage}
 \hfill
 \begin{minipage}[t]{0.37\textwidth}
@@ -279,7 +279,7 @@ To isolate the decision layer itself, Table~\ref{tab:ablation} compares the fina
 \begin{table}[t]
 \centering
 \scriptsize
-\caption{Ablation of the quality gate using the same generated candidates. Local seam and local temporal are lower-is-better; masked texture is higher-is-better. Wild corridor is omitted because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2.}
+\caption{Ablation of the quality gate using the same generated candidates. Local seam and local temporal are lower-is-better; masked texture is higher-is-better.}
 \label{tab:ablation}
 \begin{tabular}{llrrr}
 \toprule
@@ -296,7 +296,7 @@ Dataset & Setting & Seam $\downarrow$ & Temp. $\downarrow$ & Texture $\uparrow$ 
 \end{tabular}
 \end{table}
 
-The ablation clarifies the role of the gate. On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions: mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression. On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference; most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames). The practical takeaway is that the gate is primarily a \emph{risk controller}: it may sacrifice a small amount of average seam reduction in exchange for better texture preservation and slightly better local temporal stability.
+The ablation clarifies the role of the gate. We omit \textit{wild corridor} from Table~\ref{tab:ablation} because the final conservative configuration generates identity candidates there (\texttt{max\_blend}=0 and zero propagation), so the no-gate variant collapses to Part 2. On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions: mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression. On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference; most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames). The practical takeaway is that the gate is primarily a \emph{risk controller}: it may sacrifice a small amount of average seam reduction in exchange for better texture preservation and slightly better local temporal stability.
 
 \subsection{Failure Modes and Trade-offs}
 The results also expose meaningful trade-offs:
