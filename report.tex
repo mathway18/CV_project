@@ -31,7 +31,7 @@ From Hand-crafted Baselines to Quality-Gated Refinement}
 \maketitle
 
 \begin{abstract}
-Temporal consistency is the central bottleneck of practical video object removal: frame-wise plausible results often still exhibit flicker, boundary instability, or drift over time. We study video object removal and background restoration under a three-stage course setting: (1) a hand-crafted baseline with detection, motion filtering, and classical inpainting; (2) an AI-driven pipeline combining SAM 2 and ProPainter; and (3) a quality-gated extension that performs keyframe repair and frame-level fallback for stability. Our implementation emphasizes practical reproducibility, supports mandatory datasets (wild corridor, \textit{bmx-trees}, \textit{tennis}), and reports no-reference boundary seam and temporal warp metrics for Part 2 vs. Part 3. Experiments show that quality-gated refinement improves seam and temporal consistency on \textit{bmx-trees} and \textit{tennis}, while correctly preserving an already strong Part 2 output on the corridor sequence by rejecting harmful edits. This demonstrates that adaptive acceptance is more reliable than unconditional refinement in real-world video restoration. GitHub repository: \url{https://github.com/mathway18/CV_project}.
+Temporal consistency is the central bottleneck of practical video object removal: frame-wise plausible results often still exhibit flicker, boundary instability, or drift over time. We study a three-stage course pipeline: (1) a hand-crafted baseline with detection, motion filtering, and classical inpainting; (2) an AI-driven pipeline combining SAM 2 and ProPainter; and (3) a quality-gated extension with keyframe repair and frame-level fallback. We evaluate mandatory datasets (wild corridor, \textit{bmx-trees}, \textit{tennis}) using no-reference boundary seam and temporal warp metrics for Part 2 vs. Part 3. Experiments show that quality-gated refinement improves seam and temporal consistency on \textit{bmx-trees} and \textit{tennis}, while preserving an already strong corridor baseline by rejecting harmful edits. This indicates adaptive acceptance is more reliable than unconditional refinement in real-world restoration. GitHub repository: \url{https://github.com/mathway18/CV_project}.
 \end{abstract}
 
 \section{Introduction}
@@ -119,6 +119,7 @@ D_t \le \tau_d
 \right],
 \end{equation}
 where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds. This means seam must not regress, temporal error can increase only within a bounded tolerance, and masked-region drift must remain controlled.
+where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds.
 If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
 \section{Experiments}
