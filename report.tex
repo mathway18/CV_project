@@ -14,6 +14,8 @@
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
 \usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 
 \cvprfinalcopy % CAMERA-READY version
@@ -112,19 +114,70 @@ Part 3 introduces a conservative refinement strategy:
 \end{enumerate}
 Unlike unconditional post-processing, this stage is explicitly formulated as a \emph{decision problem}. For each candidate frame $I_t^{\text{P3}}$ and baseline frame $I_t^{\text{P2}}$ (P2/P3 denote Part 2/Part 3 outputs), we evaluate local boundary seam, temporal warp consistency, and masked-region change magnitude. A frame is accepted only when all criteria below are satisfied:
 \begin{equation}
+\label{eq:gate}
 \mathrm{Accept}_t=\mathbf{1}\!\left[
 \Delta S_t \le 0 \;\wedge\;
 \Delta W_t \le \tau_w \;\wedge\;
 D_t \le \tau_d
 \right],
 \end{equation}
-where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds. This means seam must not regress, temporal error can increase only within a bounded tolerance, and masked-region drift must remain controlled.
 where $\Delta S_t=S_t^{\text{P3}}-S_t^{\text{P2}}$ is seam change, $\Delta W_t=W_t^{\text{P3}}-W_t^{\text{P2}}$ is temporal-warp change, $D_t$ is masked-region drift, and $(\tau_w,\tau_d)$ are safety thresholds.
 If any criterion fails, we directly copy $I_t^{\text{P2}}$ to the final output. The key benefit is dual-regime robustness: Part 3 improves difficult sequences with large texture/occlusion, and it preserves strong Part 2 outputs in easy or already-clean sequences.
 
+\subsection{Implementation Details}
+All reported project results are \emph{inference-only}; no detector, segmenter, or inpainting network was retrained in this project. Table~\ref{tab:impl} summarizes the concrete implementation choices that were used in the final runs and directly map the report to the released code/configuration files.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Implementation details used in the final system.}
+\label{tab:impl}
+\begin{tabular}{lp{0.78\textwidth}}
+\toprule
+Category & Details \\
+\midrule
+Hardware/runtime & All reported experiments were executed under a single CUDA GPU budget with an observed 8\,GB VRAM limit. This constraint forced the wild corridor restoration run to $656\times368$; larger inference sizes such as $768\times432$ and $960\times544$ exceeded memory. The report therefore uses an exported $1280\times720$ display copy derived from that successful low-resolution restoration rather than a separate high-resolution inference pass. \\
+Software stack & Python 3.10+ environment with OpenCV $\geq$ 4.8.0, NumPy $\geq$ 1.21.0, PyTorch $\geq$ 2.5.1, Torchvision $\geq$ 0.20.1, scikit-image $\geq$ 0.24.0, and Ultralytics $\geq$ 8.0.0. On CUDA machines, SAM 2 inference runs under \texttt{torch.autocast} with bfloat16. \\
+Part 1 baseline & YOLOv8-Seg checkpoint \texttt{yolov8s-seg.pt}, confidence threshold 0.5, target classes $\{0,1,15\}$ (person, bicycle, cat), Lucas--Kanade motion threshold 1.0, and morphological dilation to enlarge masks before restoration. \\
+Part 2 masks & SAM 2.1 Hiera Tiny was used for the reproducible wild corridor run because it fit the local memory budget. The final predictor uses explicit detector boxes with \texttt{multimask\_output=False}; therefore \texttt{points\_per\_side} is not used in our pipeline (box prompting replaces grid-point sampling). Temporal mask stabilization is disabled by default because it amplified false positives on the wild corridor sequence. \\
+Part 2 inpainting & ProPainter was run with fp16 enabled. For the corridor run we used \texttt{subvideo\_length=30}, \texttt{neighbor\_length=6}, and spatial size $656\times368$. \\
+Part 3 refinement & Default Part 3 configuration is keyframe stride 12, propagation radius 6, inpaint radius 5, mask dilation 5, soft edge 17, temporal alpha 0.12, maximum blend 0.55, and artifact threshold 8. The optional diffusion backend is configured with 24 denoising steps and guidance scale 7.0. The reproducible final report results use the OpenCV backend. \\
+Threshold selection & In Eq.~\ref{eq:gate}, $\tau_w$ corresponds to \texttt{max\_temporal\_regression} and $\tau_d$ to \texttt{max\_masked\_delta}. We did not run an exhaustive grid search. Instead, we started from the permissive global defaults $(\tau_w,\tau_d)=(0.2,18)$ and manually tightened them by inspecting per-frame outputs and saved gate logs until false acceptances disappeared, i.e., frames with visible seam artifacts, temporal flicker, or excessive masked-region smoothing despite a nominal candidate repair. Final values were $(0.08,12)$ for \textit{bmx-trees}, $(0.0,8)$ for \textit{tennis}, and $(0.0,0.1)$ for wild corridor, reflecting increasingly conservative acceptance in already-stable scenes. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Quality-Gated Refinement Algorithm}
+Algorithm~\ref{alg:qgr} presents the core control logic of Part 3. The important point is that refinement is not treated as an unconditional image-to-image transform; it is a candidate generation step followed by a conservative acceptance test.
+
+\begin{algorithm}[t]
+\caption{Quality-Gated Refinement}
+\label{alg:qgr}
+\begin{algorithmic}[1]
+\REQUIRE Original video $X_{1:T}$, Part 2 output $P_{1:T}$, masks $M_{1:T}$, stride $s$, thresholds $(\tau_w,\tau_d)$
+\ENSURE Final refined video $Y_{1:T}$
+\STATE $\mathcal{K} \leftarrow \{t \mid t \bmod s = 0 \;\land\; |M_t| > 0\}$
+\FOR{$t=1$ to $T$}
+    \IF{$|M_t| = 0$}
+        \STATE $Y_t \leftarrow P_t$; \textbf{continue}
+    \ENDIF
+    \STATE Find the nearest repaired keyframe in $\mathcal{K}$ or repair frame $t$ directly
+    \STATE Generate a candidate $\hat{Y}_t$ with the OpenCV backend (or optional diffusion backend)
+    \STATE Soft-blend $\hat{Y}_t$ into $P_t$ inside the dilated mask
+    \STATE Compute seam change $\Delta S_t$, temporal change $\Delta W_t$, and masked drift $D_t$
+    \IF{$\Delta S_t \le 0$ and $\Delta W_t \le \tau_w$ and $D_t \le \tau_d$}
+        \STATE $Y_t \leftarrow \hat{Y}_t$
+    \ELSE
+        \STATE $Y_t \leftarrow P_t$
+    \ENDIF
+\ENDFOR
+\RETURN $Y_{1:T}$
+\end{algorithmic}
+\end{algorithm}
+
 \section{Experiments}
 \subsection{Experimental Setup}
-We evaluate all mandatory videos: \textit{bmx-trees} (80 frames, $432\times240$), \textit{tennis} (70 frames, $432\times240$), and wild corridor (192 frames, $1280\times720$). Part 2 is the fixed baseline (SAM 2 + ProPainter). Part 3 is the quality-gated keyframe refinement stage built on top of those outputs.
+We evaluate all mandatory videos: \textit{bmx-trees} (80 frames, $432\times240$), \textit{tennis} (70 frames, $432\times240$), and \textit{wild corridor} (192 frames, native $1280\times720$). For memory reasons, the corridor restoration itself is computed at $656\times368$ and then exported as a $1280\times720$ display copy for reporting. Part 2 is the fixed baseline (SAM 2 + ProPainter). Part 3 is the quality-gated keyframe refinement stage built on top of those outputs.
 
 \subsection{Metrics}
 Because clean ground-truth videos are unavailable for these mandatory sequences, we use no-reference diagnostics:
@@ -135,6 +188,56 @@ Because clean ground-truth videos are unavailable for these mandatory sequences,
     \item \textbf{Gate acceptance behavior}: accepted/rejected frames and acceptance rate.
 \end{itemize}
 These metrics are computed from saved outputs in \texttt{outputs/part3\_*/part3\_eval.json} and summarized in \texttt{outputs/part3\_metrics\_summary.json}.
+
+\subsection{Visualization Gallery}
+Figure~\ref{fig:gallery} expands the qualitative section with large, dataset-level comparisons. The three comparison mosaics summarize representative restoration outputs, while the temporal panel highlights how the Part 3 controller suppresses visible flicker on a difficult sequence.
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{report_assets/bmx_trees_compare.png}
+    \vspace{1mm}
+    
+    {\footnotesize (a) \textit{bmx-trees}: textured background with challenging seam boundaries.}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{report_assets/tennis_compare.png}
+    \vspace{1mm}
+    
+    {\footnotesize (b) \textit{tennis}: stable corrections with high acceptance rate.}
+\end{minipage}
+
+\vspace{2mm}
+
+\begin{minipage}[t]{0.60\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{report_assets/wild_corridor_compare.png}
+    \vspace{1mm}
+    
+    {\footnotesize (c) \textit{wild corridor}: strong Part 2 baseline that should be preserved rather than over-edited.}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.37\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{report_assets/bmx_temporal.png}
+    \vspace{1mm}
+    
+    {\footnotesize (d) Temporal visualization on \textit{bmx-trees}.}
+\end{minipage}
+\caption{Expanded visual gallery for the mandatory datasets. The examples illustrate three regimes encountered in practice: difficult textured holes that benefit from selective refinement, easy scenes where many corrections can be safely accepted, and already-clean sequences where the correct decision is to keep the Part 2 result unchanged.}
+\label{fig:gallery}
+\end{figure*}
+
+The four panels in Figure~\ref{fig:gallery} support the quantitative story with concrete qualitative evidence. In \textit{bmx-trees} (Fig.~\ref{fig:gallery}a), the challenging tree texture makes Part 1 visibly blurrier and leaves Part 2/Part 3 to handle the harder seam-matching problem. The final Part 3 result is most convincing where branch boundaries cross the repaired region because the transition is less abrupt.
+
+In \textit{tennis} (Fig.~\ref{fig:gallery}b), the background geometry is simpler and the refinement is correspondingly safer. Court lines and fence/background transitions remain stable while minor local artifacts are reduced.
+
+In \textit{wild corridor} (Fig.~\ref{fig:gallery}c), the most important observation is not dramatic visual change but \emph{non-change}. The Part 2 baseline is already strong, so the gate correctly avoids unnecessary edits that could introduce new artifacts.
+
+The temporal panel in Fig.~\ref{fig:gallery}d is especially useful because it visualizes a failure mode that is harder to capture with a single frame. On \textit{bmx-trees}, temporal inconsistency appears as small flicker or boundary jitter across adjacent frames. The refined result reduces this instability while preserving the main background structure, which is consistent with the measured drop in temporal warp error reported in Table~\ref{tab:main}. Together, the gallery suggests that the main benefit of Part 3 is not large per-frame visual changes, but selective suppression of localized artifacts in the frames where Part 2 is least stable.
 
 \subsection{Main Quantitative Results}
 \begin{table}[t]
@@ -178,25 +281,54 @@ Table~\ref{tab:main} shows that Part 3 improves both seam and temporal consisten
 
 \textit{wild corridor}. All 192 candidate frames are rejected, and Part 3 exactly matches Part 2. This is not a failure; it is intended behavior of quality-gated refinement when the baseline is already strong and additional edits are likely to be harmful. The gate therefore acts as a safety mechanism that protects an already good restoration.
 
+\subsection{Ablation Study: Gate vs. Always-Accept Candidate}
+To isolate the decision layer itself, Table~\ref{tab:ablation} compares the final quality-gated output against a counterfactual ``always-accept candidate'' policy computed from the saved per-frame Part 3 logs. This ablation uses the \emph{same} candidate repairs and differs only in whether the acceptance rule in Eq.~\ref{eq:gate} is applied. We omit \textit{wild corridor} because its final dataset-specific conservative configuration uses \texttt{max\_blend}=0 and \texttt{propagation\_radius}=0, so the no-gate variant collapses to Part 2.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Ablation of the quality gate using the same generated candidates. Boundary seam score and temporal error are lower-is-better; masked texture is higher-is-better.}
+\label{tab:ablation}
+\begin{tabular}{llrrr}
+\toprule
+Dataset & Setting & Seam $\downarrow$ & Temp. $\downarrow$ & Texture $\uparrow$ \\
+\midrule
+\multirow{2}{*}{bmx-trees}
+& Always accept & \textbf{17.016} & 11.409 & 10.450 \\
+& Quality gate & 18.106 & \textbf{11.403} & \textbf{12.854} \\
+\midrule
+\multirow{2}{*}{tennis}
+& Always accept & \textbf{3.595} & 5.605 & 5.648 \\
+& Quality gate & 3.603 & \textbf{5.585} & \textbf{5.742} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ablation clarifies the role of the gate.
+
+On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions. Mean masked texture drops from the Part 2 average of 13.22 to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression.
+
+On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference. Most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames).
+
+The practical takeaway is that the gate is primarily a \emph{risk controller}. It may sacrifice a small amount of average seam reduction in exchange for better texture preservation and slightly better local temporal stability.
+
 \subsection{Failure Modes and Trade-offs}
 The results also expose meaningful trade-offs:
 \begin{itemize}
     \item \textbf{No-reference limitation.} Seam and warp are useful diagnostics, but they may not fully capture perceptual realism. This is most apparent in large uniform regions where seam reduction can coincide with over-smoothing.
     \item \textbf{Resolution mismatch.} Datasets have different spatial resolutions (corridor at $1280\times720$ vs. others at $432\times240$). Absolute metric magnitudes are therefore not directly interchangeable across datasets; within-dataset trends are more reliable.
     \item \textbf{Texture vs. smoothness tension.} Masked texture can decrease even when seam/warp improve, so final judgment should combine quantitative diagnostics with direct inspection of rendered outputs.
+    \item \textbf{Conservative acceptance.} The quality gate is intentionally asymmetric: it is easier to reject a dubious edit than to accept it. This protects the baseline, but it can also leave some potentially helpful refinements unused.
 \end{itemize}
 
-\subsection{Discussion}
-Overall, the experiments support a practical lesson for video restoration: \emph{refinement should be conditional}. A global always-on refinement step is brittle, while quality gating enables dataset-specific adaptation. In difficult scenes, selective accepted edits improve quality; in already-clean scenes, conservative rejection prevents regressions. This is particularly important in production workflows where failure cases are more costly than modest missed gains.
-
 \section{Conclusion}
-We presented a complete video object removal project that progresses from classical computer-vision baselines to modern foundation-model-based restoration and an adaptive Part 3 extension. With mandatory datasets, the final system demonstrates two complementary strengths: (1) measurable improvement where refinement is beneficial (\textit{bmx-trees}, \textit{tennis}), and (2) safe non-intervention where the baseline is already near-optimal (wild corridor).
+We presented a complete video object removal project that progresses from classical computer-vision baselines to modern foundation-model-based restoration and an adaptive Part 3 extension. Across the mandatory datasets, the final system demonstrates two complementary strengths: (1) measurable improvement where refinement is beneficial (\textit{bmx-trees}, \textit{tennis}), and (2) safe non-intervention where the baseline is already near-optimal (\textit{wild corridor}). The central lesson is that post-restoration refinement should be treated as a selective control problem rather than an always-on image enhancement step.
 
-\textbf{Limitations.}
-Our quantitative analysis for mandatory data is no-reference and therefore indirect. The diffusion backend is optional and not always feasible in limited hardware settings. Detector/SAM failures may still propagate into inpainting, and no-reference diagnostics cannot perfectly reflect perceptual naturalness under all texture regimes.
+\paragraph{Limitations.}
+Our analysis remains no-reference, so the reported seam and warp improvements are informative but still indirect. The system is also fundamentally limited by available background evidence: if an object occludes the same region for too long, or if the camera never reveals the hidden area from nearby frames, then both OpenCV repair and ProPainter must extrapolate from weak context. In those cases, the output may become over-smooth, repetitive, or structurally ambiguous. A second limitation is upstream mask quality. Detector misses, SAM leakage, and inaccurate boundaries directly affect the repaired region, and the quality gate can only reject harmful edits after they are generated rather than fixing mask errors at the source.
 
-\textbf{Future Work.}
-Future directions include: (1) larger-scale evaluation on benchmarks with ground truth (IoU/PSNR/SSIM + user study); (2) stronger video foundation models for dynamic mask quality; and (3) learning-based acceptance policies that jointly optimize seam, temporal stability, and texture retention rather than relying on manually tuned thresholds.
+\paragraph{Future Work.}
+Future work includes larger evaluation on benchmarks with ground truth, stronger video foundation models for dynamic mask quality, and learning-based acceptance policies that replace manual thresholds with data-driven reliability prediction. The optional diffusion backend is another promising extension for cases with extremely limited background evidence, because it can hallucinate semantically plausible content that never appears elsewhere in the clip. However, this comes with substantially higher compute and memory cost, larger model dependencies, and less deterministic outputs, so it is better viewed as a fallback for hard cases than as the default path.
 
 \begin{thebibliography}{17}\small
 
