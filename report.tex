@@ -185,7 +185,7 @@ Because clean ground-truth videos are unavailable for these mandatory sequences,
     \item \textbf{Boundary seam score} (lower is better): discontinuity around mask boundaries.
     \item \textbf{Temporal warp error} (lower is better): frame-to-frame inconsistency after motion warping.
     \item \textbf{Masked texture statistic} (diagnostic): local high-frequency content in masked regions.
-    \item \textbf{Gate acceptance behavior}: Accepted/rejected frames and acceptance rate.
+    \item \textbf{Gate acceptance behavior}: accepted/rejected frames and acceptance rate.
 \end{itemize}
 These metrics are computed from saved outputs in \texttt{outputs/part3\_*/part3\_eval.json} and summarized in \texttt{outputs/part3\_metrics\_summary.json}.
 
@@ -231,7 +231,11 @@ Figure~\ref{fig:gallery} expands the qualitative section with large, dataset-lev
 \label{fig:gallery}
 \end{figure*}
 
-The four panels in Figure~\ref{fig:gallery} support the quantitative story with concrete qualitative evidence. In \textit{bmx-trees} (Fig.~\ref{fig:gallery}a), the challenging tree texture makes Part 1 visibly blurrier and leaves Part 2/Part 3 to handle the harder seam-matching problem; the final Part 3 result is most convincing where branch boundaries cross the repaired region because the transition is less abrupt. In \textit{tennis} (Fig.~\ref{fig:gallery}b), the background geometry is simpler and the refinement is correspondingly safer: court lines and fence/background transitions remain stable while minor local artifacts are reduced. In \textit{wild corridor} (Fig.~\ref{fig:gallery}c), the most important observation is not dramatic visual change but \emph{non-change}: the Part 2 baseline is already strong, so the gate correctly avoids unnecessary edits that could introduce new artifacts.
+The four panels in Figure~\ref{fig:gallery} support the quantitative story with concrete qualitative evidence. In \textit{bmx-trees} (Fig.~\ref{fig:gallery}a), the challenging tree texture makes Part 1 visibly blurrier and leaves Part 2/Part 3 to handle the harder seam-matching problem. The final Part 3 result is most convincing where branch boundaries cross the repaired region because the transition is less abrupt.
+
+In \textit{tennis} (Fig.~\ref{fig:gallery}b), the background geometry is simpler and the refinement is correspondingly safer. Court lines and fence/background transitions remain stable while minor local artifacts are reduced.
+
+In \textit{wild corridor} (Fig.~\ref{fig:gallery}c), the most important observation is not dramatic visual change but \emph{non-change}. The Part 2 baseline is already strong, so the gate correctly avoids unnecessary edits that could introduce new artifacts.
 
 The temporal panel in Fig.~\ref{fig:gallery}d is especially useful because it visualizes a failure mode that is harder to capture with a single frame. On \textit{bmx-trees}, temporal inconsistency appears as small flicker or boundary jitter across adjacent frames. The refined result reduces this instability while preserving the main background structure, which is consistent with the measured drop in temporal warp error reported in Table~\ref{tab:main}. Together, the gallery suggests that the main benefit of Part 3 is not large per-frame visual changes, but selective suppression of localized artifacts in the frames where Part 2 is least stable.
 
@@ -302,7 +306,7 @@ Dataset & Setting & Seam $\downarrow$ & Temp. $\downarrow$ & Texture $\uparrow$ 
 
 The ablation clarifies the role of the gate.
 
-On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions. Mean masked texture drops from 13.22 (Part 2) to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression.
+On \textit{bmx-trees}, unconditional acceptance achieves the lowest seam score, but it does so by aggressively smoothing masked regions. Mean masked texture drops from the Part 2 average of 13.22 to 10.45, whereas the gated variant retains substantially more structure at 12.85. This matches the frame-level rejection statistics: 57/65 rejected \textit{bmx-trees} candidates were blocked due to texture loss, 7 due to seam regression, and 1 due to temporal regression.
 
 On \textit{tennis}, the candidate generator is already stable, so the gate makes only a small numerical difference. Most rejections there are triggered by temporal regression checks (10 frames) or seam checks (7 frames).
 
